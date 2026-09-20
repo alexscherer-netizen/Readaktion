@@ -222,11 +222,24 @@ dialog .dbody{padding:14px; max-height:70vh; overflow-y:auto}
 .count div{background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:5px 10px; min-width:58px; text-align:center}
 .count b{display:block; font-family:"Barlow Condensed",sans-serif; font-size:22px; line-height:1.1; font-variant-numeric:tabular-nums}
 .count span{font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--text-3)}
-.kv{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:6px 14px; font-size:13.5px}
-.kv div{display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap; border-bottom:1px solid var(--line); padding:4px 0}
-.kv .formdots{justify-content:flex-end}
+.kv{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:6px 14px; font-size:13.5px}
+.kv div{display:flex; justify-content:space-between; gap:10px; border-bottom:1px solid var(--line); padding:4px 0}
 .kv div span:first-child{color:var(--text-3)}
 .kv div span:last-child{text-align:right; font-weight:500}
+
+/* ---------- Impressum ---------- */
+.legal .kv{grid-template-columns:1fr; max-width:460px}
+.legal .kv div span:first-child{white-space:nowrap}
+.legal p{margin:0; max-width:74ch; font-size:13.5px}
+.legal p + p{margin-top:10px}
+.legal p.hint{overflow-wrap:anywhere}
+.legal a{color:var(--accent); text-decoration:underline; text-underline-offset:2px}
+.legal a.btn{text-decoration:none; color:#fff}
+.legal a.btn:hover{filter:brightness(1.08)}
+.legal ul.list{margin:0; padding-left:19px; max-width:74ch; display:grid; gap:7px; font-size:13.5px}
+.legal ul.list li{line-height:1.5}
+.legal code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px;
+  background:var(--surface-2); border:1px solid var(--line); border-radius:5px; padding:1px 5px; word-break:break-word}
 
 @media (prefers-reduced-motion: reduce){*{animation:none !important; transition:none !important}}
 @media (max-width:460px){ .score{font-size:26px} .board .inner{padding:34px 16px 14px} }
@@ -277,6 +290,7 @@ dialog .dbody{padding:14px; max-height:70vh; overflow-y:auto}
   <button class="btn ghost" type="button" id="dlgClose" aria-label="Schließen">&#10005;</button></div>
   <div class="dbody" id="dlgBody"></div></dialog>
 
+
 <script>
 "use strict";
 
@@ -287,6 +301,16 @@ const EDITOR_EMAIL = "alex.glauche@googlemail.com";
 /* ROLE: "viewer" = öffentliche Seite ohne Anmeldung, "editor" = Redaktion mit Login. */
 const ROLE = "editor";
 const PUBLIC_URL = "index.html";
+
+/* ===== Impressum / Anbieterkennzeichnung ===== */
+const LEGAL = {
+  name: "Alexander Scherer",
+  street: "Mertensstraße 18",
+  city: "13587 Berlin",
+  country: "Deutschland",
+  email: "info@alexander-scherer.com",
+  paypal: "https://www.paypal.com/paypalme/AlexanderGlauche"
+};
 
 const REST = SUPA_URL + "/rest/v1/";
 const AUTH = SUPA_URL + "/auth/v1/";
@@ -534,7 +558,8 @@ function isFresh(n){
 
 /* ===== Rendering ===== */
 const TABS=[["heute","Heute"],["fuechse","Füchse"],["gegner","Nächster Gegner"],["spiele","Spiele"],
-  ["transfers","Transfers"],["verletzungen","Verletzungen"],["hbl","HBL"],["international","International"],["archiv","Archiv"]];
+  ["transfers","Transfers"],["verletzungen","Verletzungen"],["hbl","HBL"],["international","International"],["archiv","Archiv"],
+  ["impressum","Impressum"]];
 
 function render(){
   renderAuth(); roleBanner(); renderStrip(); renderTabs(); renderSubnav(); renderView(); renderFooter(); startCountdown();
@@ -598,8 +623,69 @@ function panel(title,sub,body){
 function renderView(){
   const v=$("#view");
   const map={heute:viewHeute,fuechse:viewFuechse,gegner:viewGegner,spiele:viewSpiele,transfers:viewTransfers,
-    verletzungen:viewVerletzungen,hbl:viewHBL,international:viewIntl,archiv:viewArchiv};
+    verletzungen:viewVerletzungen,hbl:viewHBL,international:viewIntl,archiv:viewArchiv,impressum:viewImpressum};
   v.innerHTML = (map[state.tab]||viewHeute)();
+}
+
+/* ---- Impressum ---- */
+function viewImpressum(){
+  const L = LEGAL;
+  const anbieter = panel("Diensteanbieter","Angaben gemäß § 5 DDG",
+    `<div class="kv">
+      <div><span>Name</span><span>${esc(L.name)}</span></div>
+      <div><span>Anschrift</span><span>${esc(L.street)}</span></div>
+      <div><span>Ort</span><span>${esc(L.city)}</span></div>
+      <div><span>Land</span><span>${esc(L.country)}</span></div>
+      <div><span>E-Mail</span><span><a href="mailto:${esc(L.email)}">${esc(L.email)}</a></span></div>
+    </div>`);
+
+  const spenden = panel("Spenden","Freiwillig und ohne Gegenleistung",
+    `<p>Diese App ist ein privates Projekt und kostenlos nutzbar. Wer die Arbeit daran unterstützen möchte,
+      kann freiwillig etwas beitragen. Eine Spende ist eine Schenkung: Sie begründet keinen Kaufvertrag,
+      keinen Anspruch auf Support, Weiterentwicklung oder Verfügbarkeit und wird nicht zurückerstattet.</p>
+    <p style="margin-top:12px"><a class="btn primary" href="${esc(L.paypal)}" target="_blank" rel="noopener noreferrer">Über PayPal spenden</a></p>
+    <p class="hint" style="margin-top:8px">Der Button führt zu: ${esc(L.paypal)}<br>
+      Die Zahlung wird ausschließlich bei PayPal abgewickelt. Diese App nimmt selbst keine Zahlungsdaten entgegen.</p>`);
+
+  const daten = panel("Daten","Was diese App tatsächlich tut",
+    `<ul class="list">
+      <li>Die App besteht aus einer einzelnen HTML-Datei, die im Browser läuft.</li>
+      <li>Die Inhalte werden bei jedem Aufruf aus einer Supabase-Datenbank (Supabase Inc., Serverstandort EU/Irland) gelesen.
+        Beim Abruf erhält dieser Server technisch bedingt die IP-Adresse des Geräts.</li>
+      <li>Die öffentliche Ansicht erfordert keine Anmeldung. Es werden keine Eingaben von Besuchern gespeichert.</li>
+      <li>Auf der Redaktionsseite wird nach der Anmeldung ein Sitzungsschlüssel im <code>localStorage</code> des Browsers abgelegt,
+        damit die Anmeldung erhalten bleibt. Beim Abmelden wird er gelöscht.</li>
+      <li>Es werden keine Cookies gesetzt, es findet keine Reichweitenmessung, kein Tracking und keine Werbung statt.</li>
+      <li>Wird die Seite über GitHub Pages ausgeliefert, protokolliert GitHub, Inc. den Abruf wie bei Webservern üblich
+        einschließlich IP-Adresse. Darauf hat der Betreiber dieser App keinen Einfluss.</li>
+      <li>Die Schaltfläche „Daten exportieren“ erzeugt eine Datei auf dem eigenen Gerät; dabei werden keine Daten versendet.</li>
+    </ul>`);
+
+  const fonts = panel("Schriften","Google Fonts",
+    `<p>Die Seite lädt die Schriften „IBM Plex Sans“ und „Barlow Condensed“ von Google Fonts
+      (<code>fonts.googleapis.com</code>, <code>fonts.gstatic.com</code>). Dabei wird die IP-Adresse an Google übertragen.
+      Wer das vermeiden möchte, öffnet die Datei ohne Internetverbindung oder blockiert diese Adressen –
+      die App greift dann auf die Schriften des Systems zurück und bleibt vollständig bedienbar.</p>`);
+
+  const inhalte = panel("Inhalte","Haftungsausschluss",
+    `<p>Die sportlichen Angaben stammen aus öffentlich zugänglichen Quellen und werden nach bestem Wissen erfasst.
+      Für Richtigkeit, Vollständigkeit und Aktualität wird keine Gewähr übernommen. Jede Meldung ist mit ihrem
+      Prüfstatus gekennzeichnet – „BESTÄTIGT“ bei offizieller Quelle, sonst „UNBESTÄTIGT / MEDIENBERICHT“.
+      Maßgeblich sind stets die offiziellen Angaben von Verein, Liga und Verband.</p>`);
+
+  const marken = panel("Marken","Unabhängigkeit",
+    `<p>„Füchse Berlin“, „Handball-Bundesliga“ / „HBL“, „DHB“, „EHF“ sowie die Namen aller weiteren genannten Vereine
+      und Wettbewerbe sind Marken ihrer jeweiligen Inhaber und werden hier nur zur Beschreibung verwendet.
+      Diese App ist ein privates Projekt und steht in keiner Verbindung zu den Füchse Berlin, zur Handball-Bundesliga,
+      zum DHB oder zur EHF – sie ist von diesen weder geprüft noch autorisiert oder gesponsert.
+      Vereins- und Ligalogos werden nicht verwendet; die farbigen Team-Kacheln sind ein eigener Farbcode dieser App.</p>`);
+
+  const links = panel("Haftung für Links","Externe Quellen",
+    `<p>Die Quellenangaben verweisen auf externe Websites, auf deren Inhalte kein Einfluss besteht.
+      Für diese fremden Inhalte ist stets der jeweilige Anbieter verantwortlich. Zum Zeitpunkt der Verlinkung
+      waren keine Rechtsverstöße erkennbar; bei Bekanntwerden einer Rechtsverletzung wird der Link entfernt.</p>`);
+
+  return `<div class="legal">${anbieter + spenden + daten + fonts + inhalte + marken + links}</div>`;
 }
 
 /* ---- Bausteine ---- */
@@ -633,12 +719,7 @@ function gameCard(g, plain){
     :o==="d"?`<span class="pill p-draw">Unentschieden</span>`:`<span class="pill p-neutral">${esc(g.status||"angesetzt")}</span>`;
   const sc=(g.gh!=null&&g.ga!=null)?`${g.gh}:${g.ga}`:"–:–";
   const ht=(g.hh!=null&&g.ha!=null)?`(${g.hh}:${g.ha})`:"";
-  const refPill = g.referees_status==="BESTÄTIGT" ? `<span class="pill p-court">geprüft</span>`
-    : g.referees_status ? `<span class="pill p-draw">${esc(g.referees_status)}</span>` : "";
-  const refLine = (g.referees || g.referees_status)
-    ? `<div><b>Schiedsrichter:</b> ${esc(g.referees||"noch offen")} ${refPill}${
-        g.referees_source?`<div class="hint" style="margin-top:2px">${esc(g.referees_source)}</div>`:""}</div>` : "";
-  const notes=[ refLine, g.scorers?`<div><b>Beste Werfer:</b> ${esc(g.scorers)}</div>`:"",
+  const notes=[ g.scorers?`<div><b>Beste Werfer:</b> ${esc(g.scorers)}</div>`:"",
     g.keeper?`<div><b>Torhüter:</b> ${esc(g.keeper)}</div>`:"",
     g.penalties?`<div><b>Zeitstrafen / Besonderes:</b> ${esc(g.penalties)}</div>`:"",
     g.course?`<div><b>Verlauf:</b> ${esc(g.course)}</div>`:"",
@@ -762,11 +843,7 @@ function viewGegner(){
       <div><span>Punkte</span><span>${r?r.pts+":"+r.neg:"–"}</span></div>
       <div><span>Torverhältnis</span><span>${r?r.gf+":"+r.ga+" ("+(r.diff>0?"+":"")+r.diff+")":"–"}</span></div>
       <div><span>Trainer</span><span>${esc((s&&s.coach)||"–")}</span></div>
-      <div><span>Schiedsrichter</span><span>${esc(ng.referees||"noch offen")}${
-        ng.referees_status?` · ${esc(ng.referees_status==="BESTÄTIGT"?"geprüft":ng.referees_status)}`:""}</span></div>
-    </div>
-    ${ng.referees_source?`<p class="hint" style="margin-top:8px">Schiedsrichter-Ansetzung: ${esc(ng.referees_source)}</p>`:""}`
-    + countdownBox(ng));
+    </div>` + countdownBox(ng));
 
   out += panel("Aktuelle Form", "letzte fünf Spiele", formDots(opp) + formTable(opp));
 
@@ -899,7 +976,7 @@ function viewVerletzungen(){
       ${ISTATUS.map(t=>`<option${t===f.status?" selected":""}>${esc(t)}</option>`).join("")}</select></label>
     ${(f.team||f.status)?`<button class="chipbtn" data-reset="fInj">Filter zurücksetzen</button>`:""}</div>`;
   return panel("Verletzungen &amp; Ausfälle", `${list.length} von ${state.injuries.length}`,
-    bar + `<p class="hint" style="margin-bottom:10px">Ein Eintrag je Spieler. Kehrt jemand zurück, wird der Eintrag gelöscht.</p>` + (list.length?list.map(injuryItem).join(""):`<p class="empty">Keine Einträge für diese Auswahl.</p>`)
+    bar + (list.length?list.map(injuryItem).join(""):`<p class="empty">Keine Einträge für diese Auswahl.</p>`)
     + (state.isEditor?formInjury():""));
 }
 
@@ -961,22 +1038,12 @@ function viewIntl(){
 const ATABS=[["overview","Übersicht"],["games","Spiele"],["injuries","Verletzungen"],["transfers","Transfers"],["table","Tabelle"],["scout","Gegner"]];
 function curMd(){ return state.matchdays.find(m=>m.id===state.archivId)||null; }
 function mdItems(arr){ return arr.filter(x=>x.matchday_id===state.archivId); }
-/* Ausfälle sind ein Zustand, kein Spieltags-Eintrag: zeige, wer zum Spieltag ausfiel. */
-function injuriesAt(m){
-  if(!m) return [];
-  const end = String(m.date_to||m.date_from||'').slice(0,10);
-  return state.injuries.filter(x=>{
-    const since = x.since ? String(x.since).slice(0,10) : null;
-    return since && end && since <= end;  // ohne bekanntes Startdatum keine Zuordnung
-  });
-}
 function viewArchiv(){
   const m=curMd();
   if(!m) return panel("Archiv","",`<p class="empty">Kein Spieltag ausgewählt.</p>`);
   const sub=`<div class="tabs" style="margin-top:0">${ATABS.map(([k,l])=>
     `<button class="tab" data-atab="${k}" aria-selected="${state.archivTab===k}">${esc(l)}</button>`).join("")}</div>`;
-  const g=mdItems(state.games), t=mdItems(state.transfers);
-  const i=injuriesAt(m);
+  const g=mdItems(state.games), i=mdItems(state.injuries), t=mdItems(state.transfers);
   const st=state.standings.find(x=>x.matchday_id===m.id);
   const sc=state.scouting.find(x=>x.matchday_id===m.id);
   let body="";
@@ -994,7 +1061,7 @@ function viewArchiv(){
         <button class="btn sm danger" data-delmd="1">Spieltag löschen</button></div>`:""}`;
   }
   if(state.archivTab==="games") body = (g.length?g.sort((a,b)=>gkey(a)<gkey(b)?-1:1).map(x=>gameCard(x,!state.isEditor)).join(""):`<p class="empty">Keine Spiele.</p>`) + (state.isEditor?formGame():"");
-  if(state.archivTab==="injuries") body = `<p class="hint" style="margin-bottom:10px">Ausfälle werden einmal je Spieler geführt. Hier stehen die, deren Ausfall zum Zeitpunkt dieses Spieltags nachweislich schon bestand. Einträge ohne bekanntes Startdatum werden nicht zugeordnet.</p>` + (i.length?i.map(injuryItem).join(""):`<p class="empty">Keine Ausfälle.</p>`) + (state.isEditor?formInjury():"");
+  if(state.archivTab==="injuries") body = (i.length?i.map(injuryItem).join(""):`<p class="empty">Keine Ausfälle.</p>`) + (state.isEditor?formInjury():"");
   if(state.archivTab==="transfers") body = (t.length?t.map(transferItem).join(""):`<p class="empty">Keine Transfers.</p>`) + (state.isEditor?formTransfer():"");
   if(state.archivTab==="table") body = tableBlock(st) + (state.isEditor?formStandings(st):"");
   if(state.archivTab==="scout"){
@@ -1077,9 +1144,6 @@ function formGame(g){
     ${inp("ha","Halbzeit Gast","number",g.ha??"")}
     ${inp("venue","Spielort / Halle","text",g.venue||"")}
     ${inp("spectators","Zuschauer","number",g.spectators??"")}
-    ${inp("referees","Schiedsrichter (Name / Name)","text",g.referees||"")}
-    ${sel("referees_status","Ansetzung geprüft",["noch nicht ermittelt","BESTÄTIGT","UNBESTÄTIGT / MEDIENBERICHT"],g.referees_status||"noch nicht ermittelt")}
-    ${inp("referees_source","Quelle der Ansetzung","text",g.referees_source||"",1)}
     ${sel("status","Status",GSTATUS,g.status||"angesetzt")}
     ${sel("verif","Verifizierung",VERIF,g.verif||"bestätigt")}
     ${inp("scorers","Beste Werfer","text",g.scorers||"",1)}
@@ -1097,6 +1161,7 @@ function formInjury(i){
   <form class="grid" id="fInjury" data-id="${esc(i.id||"")}">
     ${inp("player","Spieler","text",i.player||"")}
     ${selTeams("team","Verein",i.team||ME)}
+    ${selMd("matchday_id","Spieltag",i.matchday_id||state.archivId||"")}
     ${inp("kind","Verletzung / Art","text",i.kind||"")}
     ${sel("status","Status",ISTATUS,i.status||"BESTÄTIGT")}
     ${inp("since","Ausfall seit","date",(i.since||"").slice(0,10))}
@@ -1352,17 +1417,13 @@ document.addEventListener("submit", async ev=>{
     const row={matchday_id:md,competition:d.competition,round:nn(d.round),match_date:d.match_date,
       match_time:nn(d.match_time),home:d.home,away:d.away,gh:num(d.gh),ga:num(d.ga),hh:num(d.hh),ha:num(d.ha),
       venue:nn(d.venue),spectators:num(d.spectators),status:d.status,verif:d.verif,scorers:nn(d.scorers),
-      referees:nn(d.referees),referees_status:nn(d.referees_status),referees_source:nn(d.referees_source),
-      referees_checked_at:new Date().toISOString(),
       keeper:nn(d.keeper),penalties:nn(d.penalties),course:nn(d.course),source:nn(d.source)};
     if(await save("fb_games",row,f.dataset.id||null)) toast("Spiel gespeichert."); return;
   }
   if(f.id==="fInjury"){
     if(!d.player){ toast("Bitte Spielernamen angeben."); return; }
-    const row={matchday_id:null,player:d.player,team:d.team||ME,kind:nn(d.kind),status:d.status,
+    const row={matchday_id:md,player:d.player,team:d.team||ME,kind:nn(d.kind),status:d.status,
       since:nn(d.since),ret:nn(d.ret),training:nn(d.training),affected_games:nn(d.affected_games),source:nn(d.source)};
-    const doppelt = !f.dataset.id && state.injuries.some(x=>x.player===row.player && x.team===row.team);
-    if(doppelt){ toast("Für " + row.player + " gibt es schon einen Eintrag – bitte dort bearbeiten."); return; }
     if(await save("fb_injuries",row,f.dataset.id||null)) toast("Ausfall gespeichert."); return;
   }
   if(f.id==="fTransfer"){
