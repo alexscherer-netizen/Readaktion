@@ -283,7 +283,6 @@ dialog .dbody{padding:14px; max-height:70vh; overflow-y:auto}
     <button class="btn sm" type="button" id="btnLogos" hidden>Team-Logos verwalten</button>
     <span class="hint" id="storeInfo"></span>
   </div>
-  <p class="foot">Redaktionsseite &ndash; nicht weitergeben. Daten aus der Supabase-Datenbank. Die farbigen Team-Kacheln sind ein Farbcode dieser App &ndash; keine Vereins- oder Ligalogos. Die Grafik im Kopf ist ein selbst gezeichneter Handballfeld-Grundriss (40&times;20&nbsp;m, 6-m- und 9-m-Linie).</p>
 </div>
 
 <dialog id="dlg"><div class="dhead"><h3 id="dlgTitle">Dialog</h3>
@@ -297,7 +296,11 @@ dialog .dbody{padding:14px; max-height:70vh; overflow-y:auto}
 /* ===== Verbindung ===== */
 const SUPA_URL = "https://sntkvqzfiyhtvtufqfgp.supabase.co";
 const SUPA_KEY = "sb_publishable_6xbD_lAeICWBhdLWDmGmpQ_DBZmUH_A";
-const EDITOR_EMAIL = "alex.glauche@googlemail.com";
+/* Die Redaktionskennung steht nicht im Klartext in der Datei, sondern nur als
+   SHA-256-Prüfsumme. Aus ihr lässt sich die Adresse nicht zurückrechnen.
+   Neue Prüfsumme erzeugen (Adresse klein geschrieben, ohne Leerzeichen):
+   echo -n "adresse@example.com" | sha256sum */
+const EDITOR_HASH = "dfc2c1e92efa1f174bfea9246aa850ba98806fd53586042c3fa95c27587b3e28";
 /* ROLE: "viewer" = öffentliche Seite ohne Anmeldung, "editor" = Redaktion mit Login. */
 const ROLE = "editor";
 const PUBLIC_URL = "index.html";
@@ -350,12 +353,32 @@ const upsertRow = (table,row,conflict) => rest(table + "?on_conflict=" + conflic
   headers:Object.assign(headers(true),{Prefer:"resolution=merge-duplicates,return=representation"}), body:JSON.stringify(row)});
 const deleteWhere = (table,col,val) => rest(table + "?" + col + "=eq." + encodeURIComponent(val), {method:"DELETE", headers:headers()});
 
+/* Nur eine einzige Kennung darf die Redaktion öffnen. Verglichen wird die
+   Prüfsumme der Adresse, klein geschrieben und ohne Leerzeichen – damit passt
+   auch eine Eingabe mit Großbuchstaben. */
+async function checkEditor(mail){
+  const norm = String(mail||"").trim().toLowerCase();
+  if(!norm) return false;
+  if(!(window.crypto && crypto.subtle))
+    throw new Error("Dieser Browser kann die Kennung nicht prüfen. Bitte die Seite über https aufrufen oder einen aktuellen Browser verwenden.");
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(norm));
+  const hex = Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+  return hex === EDITOR_HASH;
+}
 async function login(email, password){
   const r = await fetch(AUTH + "token?grant_type=password", {method:"POST",
     headers:{apikey:SUPA_KEY,"Content-Type":"application/json"}, body:JSON.stringify({email,password})});
   const d = await r.json().catch(()=>({}));
   if(!r.ok) throw new Error(d.error_description || d.msg || d.message || ("Fehler " + r.status));
-  setSession(d); return session;
+  setSession(d);
+  let ok = false;
+  try{ ok = !!session && await checkEditor(session.email); }
+  catch(err){ await logout(); throw err; }
+  if(!ok){
+    await logout();
+    throw new Error("Diese Kennung ist für die Redaktion nicht freigeschaltet.");
+  }
+  return session;
 }
 async function refreshSession(){
   if(!session || !session.refresh_token) return null;
@@ -363,14 +386,22 @@ async function refreshSession(){
     headers:{apikey:SUPA_KEY,"Content-Type":"application/json"},
     body:JSON.stringify({refresh_token:session.refresh_token})});
   if(!r.ok){ setSession(null); return null; }
-  setSession(await r.json()); return session;
+  setSession(await r.json());
+  let ok = false;
+  try{ ok = !!session && await checkEditor(session.email); }catch(e){ ok = false; }
+  if(!ok){ setSession(null); return null; }
+  return session;
 }
 async function logout(){
   try{ await fetch(AUTH + "logout", {method:"POST", headers:headers(true)}); }catch(e){}
   setSession(null);
 }
-function restoreSession(){
+async function restoreSession(){
   try{ const raw = localStorage.getItem(SESS_KEY); if(raw) session = JSON.parse(raw); }catch(e){ session=null; }
+  /* Eine gespeicherte Sitzung einer anderen Kennung wird verworfen, nicht weiterverwendet. */
+  let ok = false;
+  try{ ok = !!session && await checkEditor(session.email); }catch(e){ ok = false; }
+  if(!ok) setSession(null);
 }
 
 /* ===== Stammdaten ===== */
@@ -1241,15 +1272,17 @@ function formSquad(team){
 /* ===== Dialoge ===== */
 function openLogin(){
   $("#dlgTitle").textContent="Anmelden";
-  $("#dlgBody").innerHTML=`<p class="hint" style="margin-bottom:10px">Nur für die Redaktion.</p>
+  $("#dlgBody").innerHTML=`<p class="hint" style="margin-bottom:10px">Diese Seite ist einer einzigen Kennung vorbehalten.
+    Andere Anmeldungen werden abgewiesen, auch wenn das Passwort stimmt.</p>
     <form class="grid" id="fLogin">${inp("email","E-Mail","email","",1)}${inp("password","Passwort","password","",1)}
     <div class="full formfoot"><button class="btn primary" type="submit">Anmelden</button></div></form>`;
   $("#dlg").showModal();
   $("#fLogin").addEventListener("submit", async ev=>{
     ev.preventDefault(); const d=fd(ev.target);
     try{ await login(d.email,d.password); }catch(err){ toast("Anmeldung fehlgeschlagen: "+err.message); return; }
-    state.isEditor = session.email===EDITOR_EMAIL;
-    $("#dlg").close(); toast(state.isEditor?"Angemeldet.":"Angemeldet, aber ohne Schreibrecht.");
+    /* login() lässt nur eine geprüfte Sitzung zurückkommen – vorhanden heißt berechtigt. */
+    state.isEditor = !!session;
+    $("#dlg").close(); toast("Angemeldet.");
     await reload();
   });
 }
@@ -1462,9 +1495,10 @@ $("#dlg").addEventListener("close", ()=>{ $("#dlgBody").innerHTML=""; });
 
 /* ===== Start ===== */
 (async function start(){
-  if(ROLE==="editor") restoreSession(); else setSession(null);
+  if(ROLE==="editor") await restoreSession(); else setSession(null);
   if(session && session.expires_at && session.expires_at < (Math.floor(Date.now()/1000)+60)) await refreshSession();
-  state.isEditor = ROLE==="editor" && !!(session && session.email===EDITOR_EMAIL);
+  /* Jede Sitzung, die restoreSession/refreshSession übersteht, ist bereits geprüft. */
+  state.isEditor = ROLE==="editor" && !!session;
   await reload();
   if(ROLE==="editor"){
     setInterval(()=>{ if(session) refreshSession(); }, 45*60*1000);
