@@ -440,7 +440,7 @@ const COMPS = ["Handball-Bundesliga","DHB-Pokal","EHF Champions League","EHF Eur
 const VERIF = ["bestätigt","offiziell bestätigt","Medienbericht","unbestätigt"];
 const TSTATUS = ["FIX","VERLÄNGERUNG","ABGANG","GERÜCHT","INTERESSE"];
 const ISTATUS = ["BESTÄTIGT","UNBESTÄTIGT / MEDIENBERICHT"];
-const GSTATUS = ["beendet","Zwischenstand","angesetzt"];
+const GSTATUS = ["beendet","Zwischenstand","angesetzt","verlegt"];
 const NSCOPE = [["fuechse","Füchse Berlin"],["gegner","Nächster Gegner"],["hbl","Handball-Bundesliga"],["international","International"]];
 const NCAT = ["Vereinsnews","Transfer","Transfergerücht","Vertragsverlängerung","Abgang","Neuzugang","Verletzung",
   "Rückkehrer","Trainer","Spieler","Interview","Aussage","Spielbericht","Vorschau","Ergebnis","Tabelle","Pokal","Europapokal","Nationalmannschaft"];
@@ -476,7 +476,15 @@ function gameStart(g){
   const d = new Date(String(g.match_date).slice(0,10) + "T" + ((g.match_time||"00:00").slice(0,5)) + ":00");
   return isNaN(d) ? null : d;
 }
-const gkey = g => (String(g.match_date||"").slice(0,10)) + " " + (g.match_time||"");
+/* Spiele ohne Datum sortieren ans Ende, nicht an den Anfang. */
+const gkey = g => (String(g.match_date||"9999-99-99").slice(0,10)) + " " + (g.match_time||"");
+/* Steht der Termin noch nicht fest, zeigt die App das Zeitfenster statt eines Datums,
+   das es so nicht gibt. */
+function gameDate(g){
+  if(!g) return "";
+  if(g.date_exact === false) return g.date_window || "Termin noch offen";
+  return deDate(g.match_date) || "Termin noch offen";
+}
 
 /* ===== Zustand ===== */
 const state = { matchdays:[], games:[], injuries:[], transfers:[], standings:[], scouting:[], news:[], squad:[],
@@ -535,10 +543,11 @@ const sortedByDate = (arr,dir) => arr.slice().sort((a,b)=> gkey(a)<gkey(b)?-1:gk
 function myGames(){ return state.games.filter(mine); }
 function nextGame(){
   const now = Date.now();
-  return myGames().filter(g=>g.status!=="beendet")
-    .sort((a,b)=> gkey(a)<gkey(b)?-1:1)
-    .find(g=>{ const d=gameStart(g); return !d || d.getTime() > now - 3*3600*1000; })
-    || myGames().filter(g=>g.status!=="beendet").sort((a,b)=> gkey(a)<gkey(b)?-1:1)[0] || null;
+  /* Verlegte Partien haben keinen Termin und sind deshalb nie das nächste Spiel. */
+  const offen = myGames().filter(g=>g.status!=="beendet" && g.status!=="verlegt")
+    .sort((a,b)=> gkey(a)<gkey(b)?-1:1);
+  return offen.find(g=>{ const d=gameStart(g); return !d || d.getTime() > now - 3*3600*1000; })
+    || offen[0] || null;
 }
 function lastGame(){
   return myGames().filter(g=>g.status==="beendet").sort((a,b)=> gkey(a)<gkey(b)?-1:1).pop() || null;
@@ -747,7 +756,9 @@ function gameCard(g, plain){
   const o = mine(g) ? (outcomeFor(ME,g)||{}).res : null;
   const bar = o==="w"?"var(--win)":o==="l"?"var(--loss)":o==="d"?"var(--draw)":"var(--line-strong)";
   const pill = o==="w"?`<span class="pill p-win">Sieg</span>`:o==="l"?`<span class="pill p-loss">Niederlage</span>`
-    :o==="d"?`<span class="pill p-draw">Unentschieden</span>`:`<span class="pill p-neutral">${esc(g.status||"angesetzt")}</span>`;
+    :o==="d"?`<span class="pill p-draw">Unentschieden</span>`
+    :g.status==="verlegt"?`<span class="pill p-draw">verlegt</span>`
+    :`<span class="pill p-neutral">${esc(g.status||"angesetzt")}</span>`;
   const sc=(g.gh!=null&&g.ga!=null)?`${g.gh}:${g.ga}`:"–:–";
   const ht=(g.hh!=null&&g.ha!=null)?`(${g.hh}:${g.ha})`:"";
   const notes=[ g.scorers?`<div><b>Beste Werfer:</b> ${esc(g.scorers)}</div>`:"",
@@ -757,7 +768,7 @@ function gameCard(g, plain){
     g.source?`<div class="hint">Quelle: ${esc(g.source)}${g.verif?" · "+esc(g.verif):""}</div>`:""].join("");
   return `<article class="game"><div style="display:flex"><div class="resbar" style="background:${bar}"></div><div style="flex:1;min-width:0">
     <div class="top"><span>${esc(g.competition||"")}${g.round?" · "+esc(g.round):""}</span>
-      <span>${deDate(g.match_date)}${g.match_time?", "+esc(g.match_time)+" Uhr":""}${g.venue?" · "+esc(g.venue):""}</span>${pill}</div>
+      <span>${esc(gameDate(g))}${g.match_time?", "+esc(g.match_time)+" Uhr":""}${g.venue?" · "+esc(g.venue):""}</span>${pill}</div>
     <div class="mid"><div class="side">${badge(g.home)}<em>${esc(g.home||"")}</em></div>
       <div class="score">${esc(sc)}<small>${esc(ht)}${g.spectators?" · "+esc(String(g.spectators))+" Zuschauer":""}</small></div>
       <div class="side away">${badge(g.away)}<em>${esc(g.away||"")}</em></div></div>
@@ -847,7 +858,31 @@ function viewFuechse(){
     ${(f.cat||f.status)?`<button class="chipbtn" data-reset="fNews">Filter zurücksetzen</button>`:""}</div>`;
   return panel("Füchse Berlin", `${list.length} von ${state.news.filter(n=>n.scope==="fuechse").length}`,
     bar + (list.length?list.map(newsCard).join(""):`<p class="empty">Keine Meldungen für diese Auswahl.</p>`)
-    + (state.isEditor?formNews():""));
+    + (state.isEditor?formNews():""))
+  + squadPanel(ME, "Kader", "Saison 2026/27, nach Rückennummer");
+}
+
+/* ---- Kadertabelle, für die Füchse wie für den Gegner ---- */
+function squadPanel(team, titel, sub){
+  const sq = state.squad.filter(p=>p.team===team);
+  if(!sq.length) return "";
+  const eigen = team===ME;
+  const num = p => { const n=parseInt(p.shirt_no,10); return isNaN(n) ? 999 : n; };
+  /* Eigener Kader nach Rückennummer, Gegner nach Schlüsselspielern. */
+  const rows = sq.slice().sort((a,b)=> eigen ? num(a)-num(b) : (b.is_key?1:0)-(a.is_key?1:0));
+  const verletzt = new Set(state.injuries.filter(i=>i.team===team).map(i=>i.player));
+  return panel(titel, sub || `${sq.length} Spieler erfasst`,
+    `<div class="tablewrap"><table><thead><tr><th class="n">Nr.</th><th>Spieler</th><th>Position</th>
+      <th>Nation</th><th>Rolle</th><th class="n">Spiele</th><th class="n">Tore</th><th>Hinweis</th>${state.isEditor?"<th></th>":""}</tr></thead><tbody>
+      ${rows.map(p=>`<tr${p.is_key?' class="me"':''}>
+        <td class="n">${esc(p.shirt_no||"–")}</td>
+        <td>${esc(p.player)}${p.is_key?' <span class="pill p-accent">Schlüssel</span>':''}${
+          verletzt.has(p.player)?' <span class="pill p-loss">Ausfall</span>':''}</td>
+        <td>${esc(p.position||"")}</td><td>${esc(p.nationality||"")}</td><td>${esc(p.role||"")}</td>
+        <td class="n">${p.stat_games??"–"}</td><td class="n">${p.stat_goals??"–"}</td><td>${esc(p.stat_note||"")}</td>
+        ${state.isEditor?`<td class="n"><button class="btn ghost sm" data-del="fb_squad" data-id="${esc(p.id)}">&#10005;</button></td>`:""}</tr>`).join("")}
+    </tbody></table></div>
+    <p class="hint" style="margin-top:8px">Es werden nur Angaben gezeigt, die in einer Quelle belegt sind. Fehlende Werte bleiben leer statt geschätzt.</p>`);
 }
 
 /* ---- Nächster Gegner ---- */
@@ -866,7 +901,7 @@ function viewGegner(){
       <div><h3 style="font-size:22px">${esc(opp)}</h3>
       <div class="hint">${esc(ng.competition||"")}${ng.round?" · "+esc(ng.round):""}</div></div></div>
     <div class="kv">
-      <div><span>Datum</span><span>${deDate(ng.match_date)}</span></div>
+      <div><span>Datum</span><span>${esc(gameDate(ng))}</span></div>
       <div><span>Anwurf</span><span>${ng.match_time?esc(ng.match_time)+" Uhr":"offen"}</span></div>
       <div><span>Spielort</span><span>${esc(ng.venue||"offen")}</span></div>
       <div><span>Heim / Auswärts</span><span>${ng.home===ME?"Heimspiel":"Auswärtsspiel"}</span></div>
@@ -878,18 +913,7 @@ function viewGegner(){
 
   out += panel("Aktuelle Form", "letzte fünf Spiele", formDots(opp) + formTable(opp));
 
-  if(keys.length || sq.length){
-    out += panel("Kader &amp; Schlüsselspieler", `${sq.length} Spieler erfasst`,
-      `<div class="tablewrap"><table><thead><tr><th class="n">Nr.</th><th>Spieler</th><th>Position</th>
-        <th>Nation</th><th>Rolle</th><th class="n">Tore</th><th>Hinweis</th>${state.isEditor?"<th></th>":""}</tr></thead><tbody>
-        ${sq.sort((a,b)=>(b.is_key?1:0)-(a.is_key?1:0)).map(p=>`<tr${p.is_key?' class="me"':''}>
-          <td class="n">${esc(p.shirt_no||"–")}</td><td>${esc(p.player)}${p.is_key?' <span class="pill p-accent">Schlüssel</span>':''}</td>
-          <td>${esc(p.position||"")}</td><td>${esc(p.nationality||"")}</td><td>${esc(p.role||"")}</td>
-          <td class="n">${p.stat_goals??"–"}</td><td>${esc(p.stat_note||"")}</td>
-          ${state.isEditor?`<td class="n"><button class="btn ghost sm" data-del="fb_squad" data-id="${esc(p.id)}">&#10005;</button></td>`:""}</tr>`).join("")}
-      </tbody></table></div>
-      <p class="hint" style="margin-top:8px">Es werden nur Angaben gezeigt, die in einer Quelle belegt sind. Fehlende Werte bleiben leer statt geschätzt.</p>`);
-  }
+  if(keys.length || sq.length) out += squadPanel(opp, "Kader &amp; Schlüsselspieler", "nach Schlüsselspielern sortiert");
 
   out += panel("Verletzungen &amp; Ausfälle", `${injOpp.length} Eintrag${injOpp.length===1?"":"e"}`,
     injOpp.length ? injOpp.map(injuryItem).join("") : `<p class="empty">Keine Ausfälle des Gegners erfasst.</p>`);
@@ -1175,6 +1199,8 @@ function formGame(g){
     ${inp("ha","Halbzeit Gast","number",g.ha??"")}
     ${inp("venue","Spielort / Halle","text",g.venue||"")}
     ${inp("spectators","Zuschauer","number",g.spectators??"")}
+    ${sel("date_exact","Termin steht fest",[["true","ja"],["false","nein, nur Zeitfenster"]],g.date_exact===false?"false":"true")}
+    ${inp("date_window","Zeitfenster (falls Termin offen)","text",g.date_window||"",1)}
     ${sel("status","Status",GSTATUS,g.status||"angesetzt")}
     ${sel("verif","Verifizierung",VERIF,g.verif||"bestätigt")}
     ${inp("scorers","Beste Werfer","text",g.scorers||"",1)}
@@ -1184,7 +1210,7 @@ function formGame(g){
     ${inp("source","Quelle","text",g.source||"",1)}
     <div class="full formfoot"><button class="btn primary" type="submit">${g.id?"Änderungen speichern":"Spiel speichern"}</button>
       ${g.id?`<button class="btn" type="button" data-cancel="1">Abbrechen</button>`:""}
-      <span class="hint">Pflicht: Heim, Gast, Datum.</span></div></form></fieldset>`;
+      <span class="hint">Pflicht: Heim, Gast, Datum. Steht der Termin noch nicht fest, trage den ersten Tag des Zeitfensters als Datum ein, setze „Termin steht fest“ auf nein und schreibe das Fenster in das Textfeld.</span></div></form></fieldset>`;
 }
 function formInjury(i){
   i=i||{};
@@ -1449,6 +1475,7 @@ document.addEventListener("submit", async ev=>{
     if(!d.home||!d.away||!d.match_date){ toast("Heim, Gast und Datum sind Pflicht."); return; }
     const row={matchday_id:md,competition:d.competition,round:nn(d.round),match_date:d.match_date,
       match_time:nn(d.match_time),home:d.home,away:d.away,gh:num(d.gh),ga:num(d.ga),hh:num(d.hh),ha:num(d.ha),
+      date_window:nn(d.date_window),date_exact:d.date_exact!=="false",
       venue:nn(d.venue),spectators:num(d.spectators),status:d.status,verif:d.verif,scorers:nn(d.scorers),
       keeper:nn(d.keeper),penalties:nn(d.penalties),course:nn(d.course),source:nn(d.source)};
     if(await save("fb_games",row,f.dataset.id||null)) toast("Spiel gespeichert."); return;
