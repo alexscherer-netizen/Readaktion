@@ -490,6 +490,7 @@ function gameDate(g){
 const state = { matchdays:[], games:[], injuries:[], transfers:[], standings:[], scouting:[], news:[], squad:[],
   logos:{}, isEditor:false, tab:"heute", archivId:null, archivTab:"overview",
   fNews:{cat:"",status:""}, fGames:{comp:"",team:"",onlyMe:false,dir:"desc",state:""},
+  fTicker:{q:"",scope:"",cat:"",status:"",tage:""},
   fInj:{team:"",status:""}, fTr:{status:""}, sortTab:{key:"pts",dir:"desc"} };
 
 /* ===== Laden ===== */
@@ -597,7 +598,7 @@ function isFresh(n){
 }
 
 /* ===== Rendering ===== */
-const TABS=[["heute","Heute"],["fuechse","Füchse"],["gegner","Nächster Gegner"],["spiele","Spiele"],
+const TABS=[["heute","Heute"],["news","Nachrichten"],["fuechse","Füchse"],["gegner","Nächster Gegner"],["spiele","Spiele"],
   ["transfers","Transfers"],["verletzungen","Verletzungen"],["hbl","HBL"],["international","International"],["archiv","Archiv"],
   ["impressum","Impressum"]];
 
@@ -611,7 +612,8 @@ function renderAuth(){
        <a class="minibtn" href="${PUBLIC_URL}" target="_blank" rel="noopener">Öffentliche Ansicht</a>
        <button class="minibtn" id="btnLogout">Abmelden</button>`
     : `<button class="minibtn" id="btnLogin">Anmelden</button>`;
-  $("#btnLogos").hidden = !state.isEditor;
+  /* Die Nachrichtenseite hat diese Schaltfläche nicht. */
+  const logos = $("#btnLogos"); if(logos) logos.hidden = !state.isEditor;
 }
 function roleBanner(){
   if(ROLE!=="editor") return;
@@ -621,7 +623,9 @@ function roleBanner(){
 }
 function renderFooter(){
   const n=state.news.length, g=state.games.length;
-  $("#storeInfo").textContent = `${n} Meldungen · ${g} Spiele · ${state.matchdays.length} Spieltage`
+  const info = $("#storeInfo"); if(!info) return;
+  info.textContent = `${n} Meldungen · ${g} Spiele · ${state.matchdays.length} Spieltage`
+    + ` · zuletzt geladen ${new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})} Uhr`
     + (ROLE==="editor" ? (state.isEditor?" · Bearbeitungsmodus":" · Ansichtsmodus") : "");
 }
 function renderStrip(){
@@ -644,6 +648,7 @@ function renderTabs(){
     if(k==="fuechse") n=state.news.filter(x=>x.scope==="fuechse").length;
     if(k==="transfers") n=state.transfers.length;
     if(k==="verletzungen") n=state.injuries.length;
+    if(k==="news") n=state.news.filter(isFresh).length;
     return `<button class="tab" role="tab" data-tab="${k}" aria-selected="${state.tab===k}">${esc(l)}${n?` <span class="pill p-neutral">${n}</span>`:""}</button>`;
   }).join("");
 }
@@ -663,8 +668,78 @@ function panel(title,sub,body){
 function renderView(){
   const v=$("#view");
   const map={heute:viewHeute,fuechse:viewFuechse,gegner:viewGegner,spiele:viewSpiele,transfers:viewTransfers,
-    verletzungen:viewVerletzungen,hbl:viewHBL,international:viewIntl,archiv:viewArchiv,impressum:viewImpressum};
+    verletzungen:viewVerletzungen,hbl:viewHBL,international:viewIntl,archiv:viewArchiv,impressum:viewImpressum,
+    news:viewTicker};
   v.innerHTML = (map[state.tab]||viewHeute)();
+}
+
+/* ---- Nachrichtenseite: alles Aktuelle in einer Liste ---- */
+const SCOPE_LABEL = {fuechse:"Füchse Berlin", gegner:"Gegner", hbl:"Bundesliga", international:"Europa"};
+
+function alleMeldungen(){
+  return state.news.slice().sort((a,b)=>{
+    const ka=a.published_at||a.created_at||"", kb=b.published_at||b.created_at||"";
+    return ka<kb ? 1 : ka>kb ? -1 : 0;
+  });
+}
+function gefilterteMeldungen(){
+  const f = state.fTicker;
+  let list = alleMeldungen();
+  if(f.scope)  list=list.filter(n=>n.scope===f.scope);
+  if(f.cat)    list=list.filter(n=>n.category===f.cat);
+  if(f.status) list=list.filter(n=>n.status===f.status);
+  if(f.tage){
+    const grenze = Date.now() - Number(f.tage)*24*3600*1000;
+    list=list.filter(n=>{ const d=n.published_at?new Date(n.published_at).getTime():NaN;
+      return isNaN(d) ? false : d>=grenze; });
+  }
+  if(f.q){
+    const q=f.q.toLowerCase();
+    const treffer = n => [n.title,n.summary,n.category,n.source_name]
+      .concat(n.teams||[]).concat(n.players||[])
+      .some(v=>String(v||"").toLowerCase().includes(q));
+    list=list.filter(treffer);
+  }
+  return list;
+}
+function tickerListe(){
+  const list = gefilterteMeldungen();
+  return list.length ? list.map(n=>newsCard(n, true)).join("")
+                     : `<p class="empty">Keine Meldung passt zu dieser Auswahl.</p>`;
+}
+/* Beim Tippen wird nur die Trefferliste neu gezeichnet, nicht die ganze Ansicht –
+   sonst verliert das Suchfeld mitten im Wort den Fokus. */
+function tickerAktualisieren(){
+  const host=$("#tickerList"); if(host) host.innerHTML = tickerListe();
+  const zaehler=$("#tickerCount");
+  if(zaehler) zaehler.textContent = `${gefilterteMeldungen().length} von ${state.news.length}`;
+}
+
+function viewTicker(){
+  const f = state.fTicker;
+  const alle = alleMeldungen();
+  const cats=[...new Set(alle.map(n=>n.category).filter(Boolean))].sort();
+  const list = gefilterteMeldungen();
+
+  const bar=`<div class="filters">
+    <label class="f" style="flex:1 1 220px"><span>Suche</span>
+      <input type="search" data-fk="q" value="${esc(f.q)}" placeholder="Verein, Spieler, Stichwort"></label>
+    <label class="f"><span>Bereich</span><select data-fk="scope"><option value="">alle</option>
+      ${Object.keys(SCOPE_LABEL).map(k=>`<option value="${k}"${k===f.scope?" selected":""}>${esc(SCOPE_LABEL[k])}</option>`).join("")}</select></label>
+    <label class="f"><span>Kategorie</span><select data-fk="cat"><option value="">alle</option>
+      ${cats.map(c=>`<option${c===f.cat?" selected":""}>${esc(c)}</option>`).join("")}</select></label>
+    <label class="f"><span>Prüfstatus</span><select data-fk="status"><option value="">alle</option>
+      ${ISTATUS.map(c=>`<option${c===f.status?" selected":""}>${esc(c)}</option>`).join("")}</select></label>
+    <label class="f"><span>Zeitraum</span><select data-fk="tage">
+      <option value=""${f.tage===""?" selected":""}>alle</option>
+      <option value="1"${f.tage==="1"?" selected":""}>letzte 24 Stunden</option>
+      <option value="3"${f.tage==="3"?" selected":""}>letzte 3 Tage</option>
+      <option value="7"${f.tage==="7"?" selected":""}>letzte 7 Tage</option></select></label>
+    <button class="chipbtn" data-reset="fTicker">Filter zurücksetzen</button></div>`;
+
+  return panel("Aktuelle Meldungen",
+    `<span id="tickerCount">${list.length} von ${alle.length}</span>`,
+    bar + `<div id="tickerList">${tickerListe()}</div>`);
 }
 
 /* ---- Impressum ---- */
@@ -729,9 +804,10 @@ function viewImpressum(){
 }
 
 /* ---- Bausteine ---- */
-function newsCard(n){
+function newsCard(n, mitBereich){
   const cls = n.importance==="breaking" ? "breaking" : n.importance==="wichtig" ? "wichtig" : "";
   const pills = [
+    mitBereich && SCOPE_LABEL[n.scope] ? `<span class="pill p-court">${esc(SCOPE_LABEL[n.scope])}</span>` : "",
     n.importance==="breaking" ? `<span class="pill p-loss">Breaking News</span>` : "",
     n.is_update ? `<span class="pill p-accent">Update</span>` : "",
     isFresh(n) ? `<span class="pill p-win">Neu</span>` : "",
@@ -1079,8 +1155,9 @@ function viewHBL(){
 
 /* ---- International ---- */
 function viewIntl(){
-  const comps=["EHF Champions League","EHF European League","DHB-Pokal","IHF Klub-WM"];
-  const games=state.games.filter(g=>comps.includes(g.competition)).sort((a,b)=> gkey(a)<gkey(b)?1:-1);
+  const intl = g => { const c=String(g.competition||"");
+    return /EHF|IHF|DHB-Pokal|Super Globe|Club World|Klub-WM/i.test(c); };
+  const games=state.games.filter(intl).sort((a,b)=> gkey(a)<gkey(b)?1:-1);
   const news=state.news.filter(n=>n.scope==="international");
   let out = panel("Internationale Spiele der Füchse", `${games.length}`,
     games.length?games.map(g=>gameCard(g,true)).join(""):`<p class="empty">Keine internationalen Spiele erfasst.</p>`);
@@ -1418,6 +1495,7 @@ document.addEventListener("click", async ev=>{
     if(k==="fInj") state.fInj={team:"",status:""};
     if(k==="fTr") state.fTr={status:""};
     if(k==="fNews") state.fNews={cat:"",status:""};
+    if(k==="fTicker") state.fTicker={q:"",scope:"",cat:"",status:"",tage:""};
     renderView(); return; }
   if(t.dataset.editmd){ openMatchdayDialog(curMd()); return; }
   if(t.dataset.delmd){
@@ -1443,12 +1521,21 @@ document.addEventListener("click", async ev=>{
     toast("HBL-Teams angelegt."); return; }
 });
 
+document.addEventListener("input", ev=>{
+  const e=ev.target;
+  if(e.dataset.fk==="q"){ state.fTicker.q=e.value; tickerAktualisieren(); }
+});
+
 document.addEventListener("change", ev=>{
   const e=ev.target;
   if(e.dataset.fg){ state.fGames[e.dataset.fg]=e.value; renderView(); return; }
   if(e.dataset.fi){ state.fInj[e.dataset.fi]=e.value; renderView(); return; }
   if(e.dataset.ft){ state.fTr[e.dataset.ft]=e.value; renderView(); return; }
   if(e.dataset.fn){ state.fNews[e.dataset.fn]=e.value; renderView(); return; }
+  /* Das Suchfeld wird schon beim Tippen ausgewertet. Würde es hier beim Verlassen
+     noch einmal die ganze Ansicht neu zeichnen, ginge der Klick verloren, der den
+     Fokus gerade weggenommen hat – etwa auf "Filter zurücksetzen". */
+  if(e.dataset.fk && e.dataset.fk!=="q"){ state.fTicker[e.dataset.fk]=e.value; renderView(); return; }
   if(e.dataset.team && e.files && e.files[0]){
     const team=e.dataset.team; shrinkImage(e.files[0],src=>saveLogo(team,src)); e.value="";
   }
