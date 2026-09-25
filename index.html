@@ -581,11 +581,30 @@ function latestStandings(){
   }
   return null;
 }
+/* Tabellenzeilen kommen im Format {team,w,d,l,gf,ga}. Schreibt eine Quelle
+   stattdessen deutsche Feldnamen, werden sie hier mitgelesen, statt die Tabelle
+   stillschweigend auf lauter Nullen laufen zu lassen. */
+function tabWert(r, ...namen){
+  for(const n of namen){
+    const v = r[n];
+    if(v !== undefined && v !== null && v !== "") return Number(v) || 0;
+  }
+  return 0;
+}
 function computeTable(rows){
-  return (rows||[]).map(r=>{
-    const sp=(r.w||0)+(r.d||0)+(r.l||0);
-    return Object.assign({},r,{sp,pts:(r.w||0)*2+(r.d||0),neg:(r.l||0)*2+(r.d||0),diff:(r.gf||0)-(r.ga||0)});
-  }).sort((a,b)=> b.pts-a.pts || b.diff-a.diff || (b.gf||0)-(a.gf||0) || a.team.localeCompare(b.team))
+  return (rows||[]).map(r0=>{
+    const r = {
+      team: r0.team || r0.mannschaft || r0.verein || "",
+      w:  tabWert(r0,"w","siege","s"),
+      d:  tabWert(r0,"d","unentschieden","u"),
+      l:  tabWert(r0,"l","niederlagen","n"),
+      gf: tabWert(r0,"gf","tore_fuer","toreFuer"),
+      ga: tabWert(r0,"ga","tore_gegen","toreGegen")
+    };
+    const sp=r.w+r.d+r.l;
+    return Object.assign({},r,{sp,pts:r.w*2+r.d,neg:r.l*2+r.d,diff:r.gf-r.ga});
+  }).filter(r=>r.team)
+   .sort((a,b)=> b.pts-a.pts || b.diff-a.diff || b.gf-a.gf || a.team.localeCompare(b.team))
    .map((r,i)=>Object.assign(r,{pos:i+1}));
 }
 function rankOf(team){
@@ -896,7 +915,7 @@ function viewHeute(){
   const ng=nextGame(), lg=lastGame(), opp=opponentOf(ng), r=rankOf(ME);
   let out="";
   if(breaking.length) out += panel("Breaking News", `${breaking.length} Meldung${breaking.length===1?"":"en"}`,
-    breaking.map(newsCard).join(""));
+    breaking.map(n=>newsCard(n)).join(""));
   if(ng){
     const oR = opp?rankOf(opp):null;
     out += panel("Nächstes Spiel", esc(ng.competition||""),
@@ -910,7 +929,7 @@ function viewHeute(){
   }
   if(lg) out += panel("Letztes Ergebnis","", gameCard(lg,true));
   out += panel("Füchse-News", "die letzten Meldungen",
-    rest.length?rest.map(newsCard).join(""):`<p class="empty">Noch keine Meldungen erfasst.</p>`);
+    rest.length?rest.map(n=>newsCard(n)).join(""):`<p class="empty">Noch keine Meldungen erfasst.</p>`);
   if(r) out += panel("Tabellenstand", esc((latestStandings()||{}).as_of||""),
     `<div class="kv"><div><span>Platz</span><span>${r.pos}.</span></div>
      <div><span>Punkte</span><span>${r.pts}:${r.neg}</span></div>
@@ -933,7 +952,7 @@ function viewFuechse(){
       ${ISTATUS.map(c=>`<option${c===f.status?" selected":""}>${esc(c)}</option>`).join("")}</select></label>
     ${(f.cat||f.status)?`<button class="chipbtn" data-reset="fNews">Filter zurücksetzen</button>`:""}</div>`;
   return panel("Füchse Berlin", `${list.length} von ${state.news.filter(n=>n.scope==="fuechse").length}`,
-    bar + (list.length?list.map(newsCard).join(""):`<p class="empty">Keine Meldungen für diese Auswahl.</p>`)
+    bar + (list.length?list.map(n=>newsCard(n)).join(""):`<p class="empty">Keine Meldungen für diese Auswahl.</p>`)
     + (state.isEditor?formNews():""))
   + squadPanel(ME, "Kader", "Saison 2026/27, nach Rückennummer");
 }
@@ -1008,7 +1027,7 @@ function viewGegner(){
     + (s&&s.h2h?`<p style="margin-top:10px;white-space:pre-wrap">${esc(s.h2h)}</p>`:""));
 
   out += panel("Gegner-News", `${newsOpp.length}`,
-    newsOpp.length ? newsOpp.map(newsCard).join("") : `<p class="empty">Keine Meldungen zum Gegner erfasst.</p>`);
+    newsOpp.length ? newsOpp.map(n=>newsCard(n)).join("") : `<p class="empty">Keine Meldungen zum Gegner erfasst.</p>`);
 
   if(s && s.know) out += panel("Das sollten die Füchse wissen","",
     `<div style="white-space:pre-wrap;font-size:14.5px">${esc(s.know)}</div>
@@ -1080,7 +1099,7 @@ function viewTransfers(){
     bar + (list.length?list.map(transferItem).join(""):`<p class="empty">Keine Transfers für diese Auswahl erfasst.</p>`)
     + `<p class="hint" style="margin-top:10px">Kennzeichnung: FIX offiziell bestätigt · GERÜCHT medial berichtet · INTERESSE möglicher Wechsel · VERLÄNGERUNG · ABGANG.</p>`
     + (state.isEditor?formTransfer():""));
-  if(news.length) out += panel("Transfer-Meldungen im News-Feed", `${news.length}`, news.map(newsCard).join(""));
+  if(news.length) out += panel("Transfer-Meldungen im News-Feed", `${news.length}`, news.map(n=>newsCard(n)).join(""));
   return out;
 }
 
@@ -1149,7 +1168,7 @@ function viewHBL(){
     </div>`);
   if(next.length) out += panel("Kommende Partien", `${next.length}`, next.map(g=>gameCard(g,true)).join(""));
   if(recent.length) out += panel("Letzte Ergebnisse", `${recent.length}`, recent.map(g=>gameCard(g,true)).join(""));
-  out += panel("HBL-News", `${news.length}`, news.length?news.map(newsCard).join(""):`<p class="empty">Keine Meldungen erfasst.</p>`);
+  out += panel("HBL-News", `${news.length}`, news.length?news.map(n=>newsCard(n)).join(""):`<p class="empty">Keine Meldungen erfasst.</p>`);
   return out;
 }
 
@@ -1162,7 +1181,7 @@ function viewIntl(){
   let out = panel("Internationale Spiele der Füchse", `${games.length}`,
     games.length?games.map(g=>gameCard(g,true)).join(""):`<p class="empty">Keine internationalen Spiele erfasst.</p>`);
   out += panel("Internationale News", `${news.length}`,
-    news.length?news.map(newsCard).join(""):`<p class="empty">Keine Meldungen erfasst.</p>`);
+    news.length?news.map(n=>newsCard(n)).join(""):`<p class="empty">Keine Meldungen erfasst.</p>`);
   return out;
 }
 
